@@ -5,13 +5,21 @@ array:          .space  200     # Mảng chứa số dạng float
 array_op:       .space  100     # Mang chua operator ()+-*/^!
 array_temp:     .space  100     # Mang tam thoi
 array_post:     .space  100     # Mang luu dang post fix
+array_cal:      .space  100     # Mang luu gia tri tinh toan tu post fix
 b_float:        .word   0       # Luu phia sau dau cham dong
 temp_float:     .float  0.0     # Biến tạm để lưu số dạng float
+input_p: .asciiz "Please insert your expression: "
+error_p: .asciiz "You inserted an invalid character in your expression"
+result_p: .asciiz "Result: "
 tenf: .float 10.0
 onef: .float 1.0
+M:    .float 0.0
 index: .word 0
 .text
 main:
+    li $v0, 4
+    la $a0, input_p
+    syscall
     # Nhập chuỗi từ bàn phím
     li $v0, 8             # syscall 8: read_string
     la $a0, input_string  # Địa chỉ bắt đầu của chuỗi
@@ -116,11 +124,11 @@ not_digit:
     beq $t1, 47, ins_op
     beq $t1, 33, ins_op
     beq $t1, 77, ins_op
-    beq $t1, 136, ins_op
+    beq $t1, 94, ins_op
     
 error:    
-    li $v0, 1
-    move $a0, $t1
+    li $v0, 4
+    la $a0, error_p
     syscall
     li $v0, 10             # syscall 10: exit
     syscall
@@ -156,7 +164,7 @@ shunting_yard:
     beq $t2, 47, store_div
     beq $t2, 33, store_fac
     beq $t2, 77, store_ans
-    beq $t2, 136, store_pow
+    beq $t2, 94, store_pow
     
 store_idx:
     j push_to_post
@@ -167,13 +175,10 @@ store_close:
     li $t6, 0
     subi $t4, $t4, 1
 find_open:
-
+    ###
     lb $t8, 0($t4)
     beq $t8, 40, open_found
     sb $t8, 0($t3)
-    li $v0, 1
-    move $a0, $t8
-    syscall
     addi $t3, $t3, 1
     subi $t7, $t7, 1
     subi $t4, $t4, 1
@@ -220,12 +225,6 @@ push_to_temp:
 
 push_to_post:
     sb $t2, 0($t3)
-    li $v0, 1
-    move $a0, $t2
-    syscall
-    li $v0, 4
-    la $a0, down
-    syscall
     addi $t1, $t1, 1
     addi $t3, $t3, 1
     subi $t0, $t0, 1
@@ -240,12 +239,6 @@ push_temp_to_post:
 back:
     bgt $t6, $t5, pre_push_to_temp
     sb $t8, 0($t3)
-    li $v0, 1
-    move $a0, $t8
-    syscall
-    li $v0, 4
-    la $a0, down
-    syscall
     addi $t3, $t3, 1
     subi $t7, $t7, 1
     subi $t4, $t4, 1
@@ -255,7 +248,7 @@ precedence:
     beq $t8, 43, tok_add_sub
     beq $t8, 45, tok_add_sub
     beq $t8, 47, tok_mul_div
-    beq $t8, 136, tok_pow
+    beq $t8, 94, tok_pow
     li $t5, 0
     j back
 tok_mul_div:
@@ -269,20 +262,134 @@ tok_add_sub:
     j back   
 end_shunting_yard:    
     bnez $t7, all_temp_to_post
-    j end_program
+    j calculate
 all_temp_to_post:
     subi $t4, $t4, 1
 move_loop:
     lb $t8, 0($t4)
     
     sb $t8, 0($t3)
-    li $v0, 1
-    move $a0, $t8
-    syscall
     addi $t3, $t3, 1
     subi $t7, $t7, 1
     subi $t4, $t4, 1
     bnez  $t7, move_loop
-end_program:    
+calculate:
+    la $t0, array_post
+    la $t1, array
+    la $t2, array_cal
+    # t3 cuoi post fix
+read_postfix:    
+    lb $t4, 0($t0)
+    beq $t0, $t3, end_program
+    blt $t4, 33, cal_idx
+    beq $t4, 42, cal_mul	
+    beq $t4, 43, cal_add
+    beq $t4, 45, cal_sub
+    beq $t4, 47, cal_div
+    beq $t4, 33, cal_fac ##
+    beq $t4, 77, cal_ans ##
+    beq $t4, 94, cal_pow ##
+cal_idx:
+    mul $t4, $t4, 4
+    l.s $f1, array($t4)
+    s.s $f1, 0($t2)
+    addi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
+cal_mul:
+    l.s $f1, -8($t2)
+    l.s $f2, -4($t2)
+    mul.s $f3, $f1, $f2
+    s.s $f3, -8($t2)
+    subi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
+cal_add:
+    l.s $f1, -8($t2)
+    l.s $f2, -4($t2)
+    add.s $f3, $f1, $f2
+    s.s $f3, -8($t2)
+    subi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
+cal_sub:
+    l.s $f1, -8($t2)
+    l.s $f2, -4($t2)
+    sub.s $f3, $f1, $f2
+    s.s $f3, -8($t2)
+    subi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
+cal_div:
+    l.s $f1, -8($t2)
+    l.s $f2, -4($t2)
+    div.s $f3, $f1, $f2
+    s.s $f3, -8($t2)
+    subi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
+cal_fac:
+    l.s $f1, -4($t2)
+
+    cvt.w.s $f3, $f1
+    cvt.s.w $f4, $f3
+    c.eq.s $f1, $f4
+    bc1f error
+    l.s $f3, onef
+    l.s $f4, onef
+    l.s $f5, onef
+    
+fac_loop:
+    mul.s $f4, $f4, $f3
+    c.eq.s $f1, $f3
+    bc1t end_fac   
+    add.s $f3, $f3, $f5
+    j fac_loop
+end_fac:
+    s.s $f4, -4($t2)
+    addi $t0, $t0, 1
+    j read_postfix    
+cal_ans:
+    l.s $f1, M
+    s.s $f1, 0($t2)
+    addi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
+cal_pow:
+    l.s $f1, -8($t2)
+    l.s $f6, -8($t2)
+    l.s $f2, -4($t2)
+
+    cvt.w.s $f3, $f2
+    cvt.s.w $f4, $f3
+    c.eq.s $f2, $f4
+    bc1f error
+    l.s $f3, onef
+    l.s $f4, onef
+pow_loop:
+    mul.s $f1, $f1, $f6
+    add.s $f4, $f4, $f3
+    c.eq.s $f2, $f4
+    bc1t end_pow
+    j pow_loop
+end_pow:
+    s.s $f1, -8($t2)
+    subi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
+                    
+end_program:
+    li $v0, 4
+    la $a0, result_p
+    syscall
+    la $t1, array_cal
+    l.s $f1, 0($t1)
+    li $v0, 2
+    mov.s $f12, $f1
+    syscall
+    s.s $f1, M
+    li $v0, 4
+    la $a0, down
+    syscall
     li $v0, 10             # syscall 10: exit
     syscall
