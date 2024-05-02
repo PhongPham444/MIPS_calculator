@@ -32,7 +32,7 @@ main:
     l.s $f1, tenf
     la $t8, array_op
     li $t9, 0
-    lw $t7, index
+    li $t7, 0
 
 read_loop:
     lb $t1, 0($t0)        # Load ký tự từ chuỗi
@@ -280,6 +280,7 @@ calculate:
     # t3 cuoi post fix
 read_postfix:    
     lb $t4, 0($t0)
+    ###
     beq $t0, $t3, end_program
     blt $t4, 33, cal_idx
     beq $t4, 42, cal_mul	
@@ -391,5 +392,7 @@ end_program:
     li $v0, 4
     la $a0, down
     syscall
+
+    j main
     li $v0, 10             # syscall 10: exit
     syscall
