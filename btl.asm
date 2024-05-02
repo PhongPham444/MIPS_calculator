@@ -4,10 +4,12 @@ input_string:   .space  50      # Chuỗi nhập từ bàn phím
 array:          .space  200     # Mảng chứa số dạng float
 array_op:       .space  100     # Mang chua operator ()+-*/^!
 array_temp:     .space  100     # Mang tam thoi
+array_post:     .space  100     # Mang luu dang post fix
 b_float:        .word   0       # Luu phia sau dau cham dong
 temp_float:     .float  0.0     # Biến tạm để lưu số dạng float
 tenf: .float 10.0
 onef: .float 1.0
+index: .word 0
 .text
 main:
     # Nhập chuỗi từ bàn phím
@@ -22,6 +24,7 @@ main:
     l.s $f1, tenf
     la $t8, array_op
     li $t9, 0
+    lw $t7, index
 
 read_loop:
     lb $t1, 0($t0)        # Load ký tự từ chuỗi
@@ -55,6 +58,7 @@ store_array:
     sb $t9, 0($t8)
     addi $t9, $t9, 1
     addi $t8, $t8, 1
+    addi $t7, $t7, 1
     #reset temp
     s.s $f0, temp_float
     j continue_read
@@ -94,6 +98,7 @@ dot_end:
     sb $t9, 0($t8)
     addi $t9, $t9, 1
     addi $t8, $t8, 1
+    addi $t7, $t7, 1
     #reset temp
     s.s $f0, temp_float
     #reset b
@@ -123,6 +128,7 @@ error:
 ins_op:    
     sb $t1, 0($t8)
     addi $t8, $t8, 1
+    addi $t7, $t7, 1
     addi $t0, $t0, 1       # Di chuyển con trỏ sang phải
     j read_loop
 
@@ -131,19 +137,152 @@ continue_read:
     j read_loop
 
 end_read:
-    # Kết thúc chương trình
-    la $t0, array
-    l.s $f1, 0($t0)
-    l.s $f2, 4($t0)
-    add.s $f1, $f2, $f1
-    li $v0, 2
-    mov.s $f12, $f1
-    syscall
+    sw $t7, index
+    lw $t0, index
     la $t1, array_op
-    lb $t2, 1($t1)
+    la $t3, array_post
+    la $t4, array_temp
+    li $t7, 0 # Counter for array temp
+    li $t5, 0
+shunting_yard:
+    lb $t2, 0($t1)
+    beqz $t0, end_shunting_yard
+    blt $t2, 33, store_idx
+    beq $t2, 40, store_open
+    beq $t2, 41, store_close
+    beq $t2, 42, store_mul	
+    beq $t2, 43, store_add
+    beq $t2, 45, store_sub
+    beq $t2, 47, store_div
+    beq $t2, 33, store_fac
+    beq $t2, 77, store_ans
+    beq $t2, 136, store_pow
+    
+store_idx:
+    j push_to_post
+store_open:
+    li $t6, 0
+    j push_to_temp
+store_close:
+    li $t6, 0
+    subi $t4, $t4, 1
+find_open:
+
+    lb $t8, 0($t4)
+    beq $t8, 40, open_found
+    sb $t8, 0($t3)
+    li $v0, 1
+    move $a0, $t8
+    syscall
+    addi $t3, $t3, 1
+    subi $t7, $t7, 1
+    subi $t4, $t4, 1
+    j find_open
+open_found:
+    addi $t1, $t1, 1
+    subi $t7, $t7, 1
+    subi $t0, $t0, 1
+    j shunting_yard
+store_mul:
+    li $t6, 2
+    bgt $t6, $t5, push_to_temp
+    j pre_push_temp_to_post
+store_add:
+    li $t6, 1
+    bgt $t6, $t5, push_to_temp
+    j pre_push_temp_to_post
+store_sub:
+    li $t6, 1
+    bgt $t6, $t5, push_to_temp
+    j pre_push_temp_to_post
+store_div:
+    li $t6, 2
+    bgt $t6, $t5, push_to_temp
+    j pre_push_temp_to_post
+store_fac:
+    j push_to_post
+store_ans:
+    j push_to_post
+store_pow:
+    li $t6, 3
+    bgt $t6, $t5, push_to_temp
+    j pre_push_temp_to_post
+pre_push_to_temp:
+    addi $t4, $t4, 1
+push_to_temp:
+    addi $t5, $t6, 0  
+    sb $t2, 0($t4)
+    addi $t1, $t1, 1
+    addi $t4, $t4, 1
+    addi $t7, $t7, 1
+    subi $t0, $t0, 1
+    j shunting_yard 
+
+push_to_post:
+    sb $t2, 0($t3)
     li $v0, 1
     move $a0, $t2
     syscall
+    li $v0, 4
+    la $a0, down
+    syscall
+    addi $t1, $t1, 1
+    addi $t3, $t3, 1
+    subi $t0, $t0, 1
+    j shunting_yard 
+
+pre_push_temp_to_post:
+    subi $t4, $t4, 1
+push_temp_to_post:
+    beqz $t7, pre_push_to_temp
+    lb $t8, 0($t4)
+    j precedence
+back:
+    bgt $t6, $t5, pre_push_to_temp
+    sb $t8, 0($t3)
+    li $v0, 1
+    move $a0, $t8
+    syscall
+    li $v0, 4
+    la $a0, down
+    syscall
+    addi $t3, $t3, 1
+    subi $t7, $t7, 1
+    subi $t4, $t4, 1
+    j push_temp_to_post
+precedence:
+    beq $t8, 42, tok_mul_div	
+    beq $t8, 43, tok_add_sub
+    beq $t8, 45, tok_add_sub
+    beq $t8, 47, tok_mul_div
+    beq $t8, 136, tok_pow
+    li $t5, 0
+    j back
+tok_mul_div:
+    li $t5, 2
+    j back
+tok_add_sub:
+    li $t5, 1
+    j back
+ tok_pow:
+    li $t5, 3
+    j back   
+end_shunting_yard:    
+    bnez $t7, all_temp_to_post
+    j end_program
+all_temp_to_post:
+    subi $t4, $t4, 1
+move_loop:
+    lb $t8, 0($t4)
     
+    sb $t8, 0($t3)
+    li $v0, 1
+    move $a0, $t8
+    syscall
+    addi $t3, $t3, 1
+    subi $t7, $t7, 1
+    subi $t4, $t4, 1
+    bnez  $t7, move_loop
+end_program:    
     li $v0, 10             # syscall 10: exit
     syscall
