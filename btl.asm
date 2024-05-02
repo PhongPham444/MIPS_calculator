@@ -11,6 +11,7 @@ temp_float:     .float  0.0     # Biến tạm để lưu số dạng float
 input_p: .asciiz "Please insert your expression: "
 error_p: .asciiz "You inserted an invalid character in your expression"
 result_p: .asciiz "Result: "
+unbalanced_p: .asciiz "You inserted unbalanced parentheses in your expression"
 tenf: .float 10.0
 onef: .float 1.0
 M:    .float 0.0
@@ -176,6 +177,7 @@ store_close:
     subi $t4, $t4, 1
 find_open:
     ###
+    beqz $t7, unbalanced
     lb $t8, 0($t4)
     beq $t8, 40, open_found
     sb $t8, 0($t3)
@@ -267,12 +269,19 @@ all_temp_to_post:
     subi $t4, $t4, 1
 move_loop:
     lb $t8, 0($t4)
-    
+    beq $t8, 40, unbalanced
     sb $t8, 0($t3)
     addi $t3, $t3, 1
     subi $t7, $t7, 1
     subi $t4, $t4, 1
     bnez  $t7, move_loop
+    j calculate
+unbalanced:
+    li $v0, 4
+    la $a0, unbalanced_p
+    syscall
+    li $v0, 10             # syscall 10: exit
+    syscall
 calculate:
     la $t0, array_post
     la $t1, array
