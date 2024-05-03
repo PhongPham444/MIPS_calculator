@@ -1,65 +1,81 @@
 .data
 down: .asciiz "\n"
-input_string:   .space  50      # Chuỗi nhập từ bàn phím
-array:          .space  200     # Mảng chứa số dạng float
-array_op:       .space  100     # Mang chua operator ()+-*/^!
-array_temp:     .space  100     # Mang tam thoi
-array_post:     .space  100     # Mang luu dang post fix
-array_cal:      .space  100     # Mang luu gia tri tinh toan tu post fix
-b_float:        .word   0       # Luu phia sau dau cham dong
-temp_float:     .float  0.0     # Biến tạm để lưu số dạng float
-input_p: .asciiz "Please insert your expression: "
+input_string:   .space  50      # Array to store input string
+array:          .space  200     # Array to store the converted value from input string to float
+array_op:       .space  100     # Array to store operator ()+-*/^! and store index of the float array
+array_temp:     .space  100     # A temp array to store operator for Shunting-yard algorithm
+array_post:     .space  100     # An array to store expression in the postfix form
+array_cal:      .space  100     # A calculated array from postfix array
+b_float:        .word   0       # Count the number behind floating point
+temp_float:     .float  0.0     # Temp float to convert from string
+input_p: .asciiz "Please insert your expression or enter quit to end program: "
 error_p: .asciiz "You inserted an invalid character in your expression"
 result_p: .asciiz "Result: "
 unbalanced_p: .asciiz "You inserted unbalanced parentheses in your expression"
+quit_p: .asciiz "quit"
+quit_c: .asciiz "You entered quit"
+file_name: .asciiz "/Users/phongpham/Documents/Documents - PP's Mac/Ktmt/BTL/calc_log.txt"
+buffer: .space 32
+buffer_out: .space 32
 tenf: .float 10.0
 onef: .float 1.0
 M:    .float 0.0
 index: .word 0
+length: .word 0
 .text
+begin:
+    li $v0, 13 # system call for open file
+    la $a0, file_name # output file name
+    li $a1, 1 # Open for writing (flags are 0: read, 1: write) 
+    li $a2, 0 # mode is ignored
+    syscall # open a file ( file descriptor returned in $v0) 
+    move $s6, $v0 # save the file descriptor
 main:
+    # Input prompt
     li $v0, 4
     la $a0, input_p
     syscall
-    # Nhập chuỗi từ bàn phím
-    li $v0, 8             # syscall 8: read_string
-    la $a0, input_string  # Địa chỉ bắt đầu của chuỗi
-    li $a1, 50            # Độ dài tối đa của chuỗi
+    # Read user input
+    li $v0, 8             
+    la $a0, input_string  
+    li $a1, 50            
     syscall
-
-    # Load $t0 with the address of the input_string
+    # check if user want to quit
+    j check_quit
+not_quit:
+    # If user don't want to quit, continue
     la $t0, input_string
     la $t2, array
     l.s $f1, tenf
     la $t8, array_op
     li $t9, 0
     li $t7, 0
-
+    
 read_loop:
-    lb $t1, 0($t0)        # Load ký tự từ chuỗi
-    beq $t1, 10, end_read
-    # Kiểm tra xem ký tự hiện tại có phải là số hay không
+    lb $t1, 0($t0)        
+    beq $t1, 10, end_read  # If meet \n, finished reading
+    # If meet floating point, jump to handle floating point
     beq $t1, 46, dot_found
     blt $t1, 48, not_digit # ASCII '0'
     bgt $t1, 57, not_digit # ASCII '9'
 
-    # Nếu là số, chuyển đổi thành float
-    subi $t1, $t1, 48      # Chuyển sang giá trị số thập phân
-    l.s $f10, temp_float   # Load giá trị float từ biến tạm
-    mul.s $f10, $f10, $f1  # Nhân cho 10 để thêm chữ số mới
-    mtc1 $t1, $f11         # Move integer to floating-point
+    # Convert asciiz to int, then convert to float
+    subi $t1, $t1, 48      # Convert to int
+    l.s $f10, temp_float   # Load temp
+    mul.s $f10, $f10, $f1  # Mul by 10
+    mtc1 $t1, $f11         # Move int to floating-point
     cvt.s.w $f11, $f11
-    add.s $f10, $f10, $f11 # Thêm số mới vào giá trị float
-    s.s $f10, temp_float   # Lưu giá trị float mới vào biến tạm
+    add.s $f10, $f10, $f11 # Add the current float to the temp value that mul by 10
+    s.s $f10, temp_float   # Store the temp value back
 
-    # Kiểm tra xem ký tự tiếp theo có phải là dấu chấm hay không
-    lb $t5, 1($t0)         # Load ký tự tiếp theo
-    beq $t5, 46, continue_read # Nếu là dấu chấm, vong tiep theo
+    # Check the next character in input string
+    lb $t5, 1($t0)         
+    beq $t5, 46, continue_read
     blt $t5, 48, store_array # ASCII '0'
     bgt $t5, 57, store_array # ASCII '9'
     j continue_read
 store_array:    
-    # Neu khong phai la so thi luu lai bien do vao array
+    # If the next character not number, store temp to array, reset temp
     l.s $f10, temp_float
     s.s $f10, 0($t2)
     addi $t2, $t2, 4
@@ -73,32 +89,39 @@ store_array:
     j continue_read
 
 dot_found:
-    li $t6, 1              # Khởi tạo biến đếm số chữ số sau dấu chấm động
-    addi $t0, $t0, 1
+    li $t6, 1              # counter
+    lb $t5, -1($t0)
+    beq $t5, 77, error     # if the previous character is M then error
+    lb $t5, 1($t0)
+    blt $t5, 48, error
+    bgt $t5, 57, error     # if the next character is not a number then error
+    addi $t0, $t0, 1       # skip the dot
 dot_loop:
-    lb $t5, 0($t0)         # Load ký tự tiếp theo
-    # Kiểm tra xem ký tự tiếp theo có phải là số hay không
+    lb $t5, 0($t0)
+    
     blt $t5, 48, dot_end
     bgt $t5, 57, dot_end
 
-    # Nếu là số, cập nhật biến đếm và tiếp tục
+    # Update the number behind the floating point with the same method
     subi $t5, $t5, 48
     lw $t4, b_float
     mul $t4, $t4, 10
     add $t4, $t4, $t5
     sw $t4, b_float
-    mul $t6, $t6, 10       # Tăng biến đếm lên 1
-    addi $t0, $t0, 1       # Di chuyển con trỏ sang phải
+    mul $t6, $t6, 10       # Update counter
+    addi $t0, $t0, 1       
 
     j dot_loop
 
 dot_end:
+    # Convert behind float and counter to float, then div behind float by counter
     lw $t4, b_float
     mtc1 $t4, $f4
     mtc1 $t6, $f6
     cvt.s.w $f4, $f4
     cvt.s.w $f6, $f6
     div.s $f4, $f4, $f6
+    # Add temp float with the calculated behind float, the store to array
     l.s $f10, temp_float
     add.s $f10, $f10, $f4
     s.s $f10, 0($t2)
@@ -126,7 +149,7 @@ not_digit:
     beq $t1, 33, ins_op
     beq $t1, 77, ins_op
     beq $t1, 94, ins_op
-    
+    # If current character is not in the valid list, jump to error
 error:    
     li $v0, 4
     la $a0, error_p
@@ -138,14 +161,17 @@ ins_op:
     sb $t1, 0($t8)
     addi $t8, $t8, 1
     addi $t7, $t7, 1
-    addi $t0, $t0, 1       # Di chuyển con trỏ sang phải
+    addi $t0, $t0, 1       
     j read_loop
 
 continue_read:
-    addi $t0, $t0, 1       # Di chuyển con trỏ sang phải
+    addi $t0, $t0, 1       
     j read_loop
 
 end_read:
+    la $t1, input_string
+    sub $t0, $t0, $t1
+    sw $t0, length
     sw $t7, index
     lw $t0, index
     la $t1, array_op
@@ -290,7 +316,7 @@ calculate:
 read_postfix:    
     lb $t4, 0($t0)
     ###
-    beq $t0, $t3, end_program
+    beq $t0, $t3, end_main
     blt $t4, 33, cal_idx
     beq $t4, 42, cal_mul	
     beq $t4, 43, cal_add
@@ -388,7 +414,7 @@ end_pow:
     addi $t0, $t0, 1
     j read_postfix
                     
-end_program:
+end_main:
     li $v0, 4
     la $a0, result_p
     syscall
@@ -401,7 +427,84 @@ end_program:
     li $v0, 4
     la $a0, down
     syscall
+    lw $t9, length
+    addi $t9, $t9, 1
+    li $v0, 15 # system call for write to file     
+    move $a0, $s6 # file descriptor
+    la $a1 , input_string # address of buffer from which to write 
+    move $a2 , $t9 # hardcoded buffer length
+    syscall # write to file
+    l.s $f10, tenf
+    li $t0, 0	
+float_to_string:
+    cvt.w.s $f3, $f1
+    cvt.s.w $f4, $f3
+    c.eq.s $f1, $f4
+    li $v0, 2
+    mov.s $f12, $f4
+    syscall
+    bc1t end_float_to_string
+    mul.s $f1, $f1, $f10
+    addi $t0, $t0, 1
+    j float_to_string
+end_float_to_string:
+    cvt.w.s $f3, $f1
+    mfc1 $t1, $f3
+    addi $t3, $zero, 10 # Load divisor (10)
+    addi $t4, $zero, 0  # Initialize index for buffer
+divide_loop:
+    div $t1, $t3        # Divide integer by 10
+    mfhi $t5            # Remainder stored in $t3
+    addi $t5, $t5, 48   # Convert remainder to ASCII
+    sb $t5, buffer($t4) # Store ASCII character in buffer
+    addi $t4, $t4, 1    # Increment buffer index
 
+    mflo $t1            # Quotient stored in $t0
+    bnez $t1, divide_loop
+    subi $t4, $t4, 1
+    li $t6, 0
+    li $t7, 0
+swap_loop:
+    lb $t5, buffer($t4)
+    sb $t5, buffer_out($t6)
+    addi $t6, $t6, 1
+    beqz $t4, end_swap
+    beq $t6, $t0, add_dot
+    subi $t4, $t4, 1
+    addi $t7, $t7, 1
+    j swap_loop
+add_dot:
+    li $t5, 46
+    sb $t5, buffer_out($t6)
+    addi $t6, $t6, 1
+    subi $t4, $t4, 1
+    j swap_loop
+end_swap:
+    li $v0, 15 # system call for write to file     
+    move $a0, $s6 # file descriptor
+    la $a1 , buffer_out # address of buffer from which to write 
+    move $a2 , $t6 # hardcoded buffer length
+    syscall # write to file
     j main
+check_quit:
+    ###
+    la $t0, input_string
+    la $t1, quit_p
+    lb $t2, 0($t0)   
+    lb $t3, 0($t1)   
+
+    beqz $t2, not_quit  # Kết thúc vòng lặp nếu gặp ký tự kết thúc chuỗi ('\0')
+    bne $t2, $t3, not_quit  # Nếu ký tự không khớp, thoát khỏi vòng lặp
+    addi $t0, $t0, 1
+    addi $t1, $t1, 1
+    j quit
+quit:
+    li $v0, 4
+    la $a0, quit_c
+    syscall
+end_program:
+li $v0, 16 # system call for close file
+move $a0 , $s6 # f i l e descriptor to close
+syscall # close file
     li $v0, 10             # syscall 10: exit
     syscall
