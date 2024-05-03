@@ -91,7 +91,8 @@ store_array:
 dot_found:
     li $t6, 1              # counter
     lb $t5, -1($t0)
-    beq $t5, 77, error     # if the previous character is M then error
+    blt $t5, 48, error
+    bgt $t5, 57, error
     lb $t5, 1($t0)
     blt $t5, 48, error
     bgt $t5, 57, error     # if the next character is not a number then error
@@ -154,6 +155,9 @@ error:
     li $v0, 4
     la $a0, error_p
     syscall
+    li $v0, 16 # system call for close file
+    move $a0 , $s6 # f i l e descriptor to close
+    syscall # close file
     li $v0, 10             # syscall 10: exit
     syscall
     
@@ -306,6 +310,9 @@ unbalanced:
     li $v0, 4
     la $a0, unbalanced_p
     syscall
+    li $v0, 16 # system call for close file
+    move $a0 , $s6 # f i l e descriptor to close
+    syscall # close file
     li $v0, 10             # syscall 10: exit
     syscall
 calculate:
@@ -418,73 +425,26 @@ end_main:
     li $v0, 4
     la $a0, result_p
     syscall
+    
     la $t1, array_cal
     l.s $f1, 0($t1)
     li $v0, 2
     mov.s $f12, $f1
     syscall
+    
     s.s $f1, M
     li $v0, 4
     la $a0, down
     syscall
+    
     lw $t9, length
     addi $t9, $t9, 1
     li $v0, 15 # system call for write to file     
     move $a0, $s6 # file descriptor
     la $a1 , input_string # address of buffer from which to write 
     move $a2 , $t9 # hardcoded buffer length
-    syscall # write to file
-    l.s $f10, tenf
-    li $t0, 0	
-float_to_string:
-    cvt.w.s $f3, $f1
-    cvt.s.w $f4, $f3
-    c.eq.s $f1, $f4
-    li $v0, 2
-    mov.s $f12, $f4
-    syscall
-    bc1t end_float_to_string
-    mul.s $f1, $f1, $f10
-    addi $t0, $t0, 1
-    j float_to_string
-end_float_to_string:
-    cvt.w.s $f3, $f1
-    mfc1 $t1, $f3
-    addi $t3, $zero, 10 # Load divisor (10)
-    addi $t4, $zero, 0  # Initialize index for buffer
-divide_loop:
-    div $t1, $t3        # Divide integer by 10
-    mfhi $t5            # Remainder stored in $t3
-    addi $t5, $t5, 48   # Convert remainder to ASCII
-    sb $t5, buffer($t4) # Store ASCII character in buffer
-    addi $t4, $t4, 1    # Increment buffer index
+    syscall # write to file	
 
-    mflo $t1            # Quotient stored in $t0
-    bnez $t1, divide_loop
-    subi $t4, $t4, 1
-    li $t6, 0
-    li $t7, 0
-swap_loop:
-    lb $t5, buffer($t4)
-    sb $t5, buffer_out($t6)
-    addi $t6, $t6, 1
-    beqz $t4, end_swap
-    beq $t6, $t0, add_dot
-    subi $t4, $t4, 1
-    addi $t7, $t7, 1
-    j swap_loop
-add_dot:
-    li $t5, 46
-    sb $t5, buffer_out($t6)
-    addi $t6, $t6, 1
-    subi $t4, $t4, 1
-    j swap_loop
-end_swap:
-    li $v0, 15 # system call for write to file     
-    move $a0, $s6 # file descriptor
-    la $a1 , buffer_out # address of buffer from which to write 
-    move $a2 , $t6 # hardcoded buffer length
-    syscall # write to file
     j main
 check_quit:
     ###
@@ -493,8 +453,8 @@ check_quit:
     lb $t2, 0($t0)   
     lb $t3, 0($t1)   
 
-    beqz $t2, not_quit  # Kết thúc vòng lặp nếu gặp ký tự kết thúc chuỗi ('\0')
-    bne $t2, $t3, not_quit  # Nếu ký tự không khớp, thoát khỏi vòng lặp
+    beqz $t2, not_quit  
+    bne $t2, $t3, not_quit  
     addi $t0, $t0, 1
     addi $t1, $t1, 1
     j quit
@@ -503,8 +463,8 @@ quit:
     la $a0, quit_c
     syscall
 end_program:
-li $v0, 16 # system call for close file
-move $a0 , $s6 # f i l e descriptor to close
-syscall # close file
+    li $v0, 16 # system call for close file
+    move $a0 , $s6 # f i l e descriptor to close
+    syscall # close file
     li $v0, 10             # syscall 10: exit
     syscall
