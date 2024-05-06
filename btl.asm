@@ -26,12 +26,14 @@ length: .word 0
 neg_one: .float -1.0
 .text
 begin:
-    li $v0, 13 # system call for open file
-    la $a0, file_name # output file name
-    li $a1, 1 # Open for writing (flags are 0: read, 1: write) 
-    li $a2, 0 # mode is ignored
-    syscall # open a file ( file descriptor returned in $v0) 
-    move $s6, $v0 # save the file descriptor
+    # Open file
+    li $v0, 13 
+    la $a0, file_name 
+    li $a1, 1 
+    li $a2, 0 
+    syscall 
+    move $s6, $v0 
+    
 main:
     # Input prompt
     li $v0, 4
@@ -42,6 +44,11 @@ main:
     la $a0, input_string  
     li $a1, 50            
     syscall
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , input_p 
+    li $a2 , 60
+    syscall 
     # check if user want to quit
     j check_quit
 not_quit:
@@ -128,7 +135,7 @@ dot_end:
     add.s $f10, $f10, $f4
     s.s $f10, 0($t2)
     addi $t2, $t2, 4
-    ###
+
     sb $t9, 0($t8)
     addi $t9, $t9, 1
     addi $t8, $t8, 1
@@ -151,18 +158,31 @@ not_digit:
     beq $t1, 33, ins_op
     beq $t1, 77, ins_op
     beq $t1, 94, ins_op
-    # If current character is not in the valid list, jump to error
+    				# If current character is not in the valid list, jump to error
 error:    
     li $v0, 4
     la $a0, error_p
     syscall
-    li $v0, 10             # syscall 10: exit
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , down
+    li $a2 , 1
+    syscall
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , error_p 
+    li $a2 , 52
+    syscall 
+     
+    li $v0, 10             	# print error prompt and end program
     syscall
     
 ins_op:    
-    sb $t1, 0($t8)
+    sb $t1, 0($t8)         	# insert valid operator to array
     addi $t8, $t8, 1
-    addi $t7, $t7, 1
+    addi $t7, $t7, 1       
     addi $t0, $t0, 1       
     j read_loop
 
@@ -170,7 +190,7 @@ continue_read:
     addi $t0, $t0, 1       
     j read_loop
 
-end_read:
+end_read:                  	# prepare 1 stack of array temp, and 1 array of postfix form
     la $t1, input_string
     sub $t0, $t0, $t1
     sw $t0, length
@@ -179,9 +199,10 @@ end_read:
     la $t1, array_op
     la $t3, array_post
     la $t4, array_temp
-    li $t7, 0 # Counter for array temp
+    li $t7, 0 			# Counter for array temp
     li $t5, 0
-shunting_yard:
+    
+shunting_yard:             	# start the algorithm
     lb $t2, 0($t1)
     beqz $t0, end_shunting_yard
     blt $t2, 33, store_idx
@@ -196,18 +217,20 @@ shunting_yard:
     beq $t2, 94, store_pow
     
 store_idx:
-    j push_to_post
-store_open:
+    j push_to_post         	# if it is an index, push directly to postfix array
+    
+store_open:                	# if it is an open bracket, set priority to 0 then push diretly to temp stack
     li $t6, 0
     j push_to_temp
-store_close:
+    
+store_close:               	# if it is an close bracket, set priority to 0 then pop every operator in the temp stack to push the postfix array until see an open bracket
     li $t6, 0
     subi $t4, $t4, 1
 find_open:
     ###
-    beqz $t7, unbalanced
+    beqz $t7, unbalanced   	# reach the end of the stack but no open found, then it is an error
     lb $t8, 0($t4)
-    beq $t8, 40, open_found
+    beq $t8, 40, open_found	# countinue the algorithm
     sb $t8, 0($t3)
     addi $t3, $t3, 1
     subi $t7, $t7, 1
@@ -218,54 +241,62 @@ open_found:
     subi $t7, $t7, 1
     subi $t0, $t0, 1
     j shunting_yard
+    
 store_mul:
-    li $t6, 2
+    li $t6, 2			# set priority to 2
     bgt $t6, $t5, push_to_temp
-    j pre_push_temp_to_post
+    j pre_push_temp_to_post	# if the current priority is greater than the previous, we push it to temp, else we push all the smaller or equal priority to post
+    
 store_add:
-    li $t6, 1
+    li $t6, 1			# set priority to 2
     bgt $t6, $t5, push_to_temp
-    j pre_push_temp_to_post
+    j pre_push_temp_to_post	# if the current priority is greater than the previous, we push it to temp, else we push all the smaller or equal priority to post
+    
 store_sub:
-    la $a2, array_op
+    la $a2, array_op		# check if the current sub operator is unary or not
     beq $a2, $t1, unary
     lb $a1, -1($t1)
     beq $a1, 40, unary
     beq $a1, 42, unary	
     beq $a1, 43, unary
     beq $a1, 45, unary
-    beq $a1, 47, unary###
-    # beq $a1, 94, store_pow
+    beq $a1, 47, unary
+    # beq $a1, 94, unary_pow	# further extension
     li $t6, 1
-    bgt $t6, $t5, push_to_temp
+    bgt $t6, $t5, push_to_temp	# if not, do the same as addition operator
     j pre_push_temp_to_post
-unary:
+unary:				# if it is an unary operator, we change it to *-1, push -1 to postfix array, and push * to temp as normal
     li $s1, -1
     sb $s1, 0($t3)
     li $s2, 42
     sb $s2, 0($t4)
-    li $t5, 2
+    li $t5, 2			# set priority of * to 2
     addi $t1, $t1, 1
     addi $t3, $t3, 1
     subi $t0, $t0, 1
     addi $t4, $t4, 1
     addi $t7, $t7, 1
     j shunting_yard
-store_div:
+    
+store_div:			# do as mul operator
     li $t6, 2
     bgt $t6, $t5, push_to_temp
     j pre_push_temp_to_post
-store_fac:
+    
+store_fac:			# ! has the highest priority so push directly to postfix 
     j push_to_post
-store_ans:
+    
+store_ans:			# treat M as a normal number
     j push_to_post
-store_pow:
+    
+store_pow:			# set priority to 3 then compare and do the same
     li $t6, 3
     bgt $t6, $t5, push_to_temp
     j pre_push_temp_to_post
-pre_push_to_temp:
+    
+pre_push_to_temp:		# set back the current pointer to new data to push
     addi $t4, $t4, 1
-push_to_temp:
+push_to_temp:			# push to temp stack, update the previous to the current priority
     addi $t5, $t6, 0  
     sb $t2, 0($t4)
     addi $t1, $t1, 1
@@ -274,27 +305,27 @@ push_to_temp:
     subi $t0, $t0, 1
     j shunting_yard 
 
-push_to_post:
+push_to_post:			# push to postfix array
     sb $t2, 0($t3)
     addi $t1, $t1, 1
     addi $t3, $t3, 1
     subi $t0, $t0, 1
     j shunting_yard 
 
-pre_push_temp_to_post:
+pre_push_temp_to_post:		# move back the pointer to get operator
     subi $t4, $t4, 1
-push_temp_to_post:
-    beqz $t7, pre_push_to_temp
+push_temp_to_post:		
+    beqz $t7, pre_push_to_temp	# re-check if the current stack is null or not
     lb $t8, 0($t4)
-    j precedence
-back:
-    bgt $t6, $t5, pre_push_to_temp
-    sb $t8, 0($t3)
+    j precedence		# find the priority of the current operator
+back:				# label to go back
+    bgt $t6, $t5, pre_push_to_temp	#if greater priority, add the pointer to new to push to temp
+    sb $t8, 0($t3)		# if smaller or equal priority, continue pop the temp stack to push to postfix
     addi $t3, $t3, 1
     subi $t7, $t7, 1
     subi $t4, $t4, 1
-    j push_temp_to_post
-precedence:
+    j push_temp_to_post		# loop to check next operator in stack
+precedence:			# get priority to return to back
     beq $t8, 42, tok_mul_div	
     beq $t8, 43, tok_add_sub
     beq $t8, 45, tok_add_sub
@@ -311,35 +342,50 @@ tok_add_sub:
  tok_pow:
     li $t5, 3
     j back   
-end_shunting_yard:    
+    
+end_shunting_yard:    		# end, if the stack not null, pop it to push to postfix
     bnez $t7, all_temp_to_post
     j calculate
 all_temp_to_post:
     subi $t4, $t4, 1
 move_loop:
     lb $t8, 0($t4)
-    beq $t8, 40, unbalanced
+    beq $t8, 40, unbalanced	# if we found an open bracket left in temp, it means missing close brack to delete open bracket
     sb $t8, 0($t3)
     addi $t3, $t3, 1
     subi $t7, $t7, 1
     subi $t4, $t4, 1
     bnez  $t7, move_loop
-    j calculate
+    j calculate			# if the stack is null, go to calculate the postfix
+    
 unbalanced:
     li $v0, 4
     la $a0, unbalanced_p
     syscall
-    li $v0, 10             # syscall 10: exit
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , down
+    li $a2 , 1
     syscall
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , unbalanced_p 
+    li $a2 , 54
+    syscall 
+    li $v0, 10            
+    syscall
+    
 calculate:
     la $t0, array_post
     la $t1, array
-    la $t2, array_cal
-    # t3 cuoi post fix
+    la $t2, array_cal		# treat as a stack
+    				# t3 is the final address of the postfix array
 read_postfix:    
     lb $t4, 0($t0)
     ###
-    beq $t0, $t3, end_main
+    beq $t0, $t3, end_main	# reached the final address
     beq $t4, -1, cal_neg
     blt $t4, 33, cal_idx
     beq $t4, 42, cal_mul	
@@ -349,20 +395,20 @@ read_postfix:
     beq $t4, 33, cal_fac ##
     beq $t4, 77, cal_ans ##
     beq $t4, 94, cal_pow ##
-cal_neg:
+cal_neg:			# load -1.0 to push to cal array
     l.s $f1, neg_one
     s.s $f1, 0($t2)
     addi $t2, $t2, 4
     addi $t0, $t0, 1
     j read_postfix
-cal_idx:
+cal_idx:			# use the index to find the value in float array, then push to cal array
     mul $t4, $t4, 4
     l.s $f1, array($t4)
     s.s $f1, 0($t2)
     addi $t2, $t2, 4
     addi $t0, $t0, 1
     j read_postfix
-cal_mul:
+cal_mul:			# binary operator, pop 2 previous in cal array, calculate then push
     l.s $f1, -8($t2)
     l.s $f2, -4($t2)
     mul.s $f3, $f1, $f2
@@ -370,7 +416,7 @@ cal_mul:
     subi $t2, $t2, 4
     addi $t0, $t0, 1
     j read_postfix
-cal_add:
+cal_add:			# binary operator, pop 2 previous in cal array, calculate then push
     l.s $f1, -8($t2)
     l.s $f2, -4($t2)
     add.s $f3, $f1, $f2
@@ -378,7 +424,7 @@ cal_add:
     subi $t2, $t2, 4
     addi $t0, $t0, 1
     j read_postfix
-cal_sub:
+cal_sub:			# binary operator, pop 2 previous in cal array, calculate then push
     l.s $f1, -8($t2)
     l.s $f2, -4($t2)
     sub.s $f3, $f1, $f2
@@ -386,15 +432,17 @@ cal_sub:
     subi $t2, $t2, 4
     addi $t0, $t0, 1
     j read_postfix
-cal_div:
+cal_div:			# binary operator, pop 2 previous in cal array, calculate then push
     l.s $f1, -8($t2)
     l.s $f2, -4($t2)
+    c.eq.s $f2, $f30
+    bc1t error
     div.s $f3, $f1, $f2
     s.s $f3, -8($t2)
     subi $t2, $t2, 4
     addi $t0, $t0, 1
     j read_postfix
-cal_fac:
+cal_fac:			# unary operator, pop a previous in cal array, calculate then push, check if it is an int
     l.s $f1, -4($t2)
 
     cvt.w.s $f3, $f1
@@ -406,7 +454,6 @@ cal_fac:
     l.s $f3, onef
     l.s $f4, onef
     l.s $f5, onef
-    
 fac_loop:
     mul.s $f4, $f4, $f3
     c.eq.s $f1, $f3
@@ -417,13 +464,15 @@ end_fac:
     s.s $f4, -4($t2)
     addi $t0, $t0, 1
     j read_postfix    
-cal_ans:
+    
+cal_ans:			# load M value, treat as a number
     l.s $f1, M
     s.s $f1, 0($t2)
     addi $t2, $t2, 4
     addi $t0, $t0, 1
     j read_postfix
-cal_pow:
+    
+cal_pow:			# binary operator, pop 2 previous in cal array, calculate then push, check if the exponent is an int
     l.s $f1, -8($t2)
     l.s $f6, -8($t2)
     l.s $f2, -4($t2)
@@ -450,29 +499,40 @@ end_main:
     li $v0, 4
     la $a0, result_p
     syscall
+    
     la $t1, array_cal
     l.s $f1, 0($t1)
     li $v0, 2
     mov.s $f12, $f1
     syscall
+    
     s.s $f1, M
     li $v0, 4
     la $a0, down
     syscall
+    
     lw $t9, length
     addi $t9, $t9, 1
-    li $v0, 15 # system call for write to file     
-    move $a0, $s6 # file descriptor
-    la $a1 , input_string # address of buffer from which to write 
-    move $a2 , $t9 # hardcoded buffer length
-    syscall # write to file
+    li $v0, 15    
+    move $a0, $s6 
+    la $a1 , input_string
+    move $a2 , $t9 
+    syscall 
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , result_p 
+    li $a2 , 8
+    syscall 
+    
     l.s $f10, tenf
     li $t0, 0	
     cvt.w.s $f3, $f1
     addi $t3, $zero, 10
-    mfc1 $t1, $f3
+    mfc1 $t1, $f3		# take $t1 as an int of an result float
+    
     cvt.s.w $f5, $f3
-    sub.s $f5, $f1, $f5
+    sub.s $f5, $f1, $f5		# take $f5 as an decimal part of result float
     li $t6, 46
     sb $t6, buffer($t4)
     addi $t4, $t4, 1
@@ -480,10 +540,10 @@ end_main:
     bltz $t1, less_than_z
     j divide_int_loop
 less_than_z:
-    neg $t1, $t1
+    neg $t1, $t1		# abs all the value, then add "-" in buffer to print in .txt
     neg.s $f5, $f5
     li $t5, 45
-    sb $t5, buffer_out($t6) # Store ASCII character in buffer_out
+    sb $t5, buffer_out($t6)
     addi $t6, $t6, 1
 divide_int_loop:
     div $t1, $t3        # Divide integer by 10
@@ -505,15 +565,15 @@ swap_loop:
     addi $t7, $t7, 1
     j swap_loop
 end_swap:
-    li $v0, 15 # system call for write to file     
-    move $a0, $s6 # file descriptor
-    la $a1 , buffer_out # address of buffer from which to write 
-    move $a2 , $t6 # hardcoded buffer length
-    syscall # write to file
+    li $v0, 15 
+    move $a0, $s6 
+    la $a1 , buffer_out 
+    move $a2 , $t6 
+    syscall 
     li $t6, 0
     l.s $f10, tenf
 begin_float:
-    beq $t6, 16, end_float
+    beq $t6, 16, end_float	# get 16 index after floating point
     mul.s $f5, $f5, $f10
     cvt.w.s $f3, $f5
     mfc1 $t1, $f3
@@ -525,36 +585,59 @@ begin_float:
     addi $t6, $t6, 1
     j begin_float
 end_float:
-    li $v0, 15 # system call for write to file     
-    move $a0, $s6 # file descriptor
-    la $a1 , buffer_f # address of buffer from which to write 
-    li $a2 , 16 # hardcoded buffer length
-    syscall # write to file
-    li $v0, 15 # system call for write to file     
-    move $a0, $s6 # file descriptor
-    la $a1 , down # address of buffer from which to write 
-    li $a2 , 1 # hardcoded buffer length
-    syscall # write to file
+    li $v0, 15 
+    move $a0, $s6 
+    la $a1 , buffer_f 
+    li $a2 , 16 
+    syscall 
+    
+    li $v0, 15    
+    move $a0, $s6 
+    la $a1 , down 
+    li $a2 , 1 
+    syscall 
+    
+    li $v0, 15    
+    move $a0, $s6 
+    la $a1 , down 
+    li $a2 , 1 
+    syscall 
+    
     j main
 check_quit:
     ###
     la $t0, input_string
     la $t1, quit_p
+check_quit_loop:
     lb $t2, 0($t0)   
     lb $t3, 0($t1)   
-
-    beqz $t2, not_quit  # Kết thúc vòng lặp nếu gặp ký tự kết thúc chuỗi ('\0')
-    bne $t2, $t3, not_quit  # Nếu ký tự không khớp, thoát khỏi vòng lặp
+    
+    beqz $t3, quit
+    beqz $t2, not_quit  
+    bne $t2, $t3, not_quit
     addi $t0, $t0, 1
     addi $t1, $t1, 1
-    j quit
+    j check_quit_loop
 quit:
     li $v0, 4
     la $a0, quit_c
     syscall
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , down
+    li $a2 , 1
+    syscall
+    
+    li $v0, 15 
+    move $a0, $s6 
+    la $a1 , quit_c 
+    li $a2 , 16 
+    syscall 
+    
 end_program:
-    li $v0, 16 # system call for close file
-    move $a0 , $s6 # f i l e descriptor to close
-    syscall # close file
-    li $v0, 10             # syscall 10: exit
+    li $v0, 16 
+    move $a0 , $s6 
+    syscall
+    li $v0, 10            
     syscall
