@@ -17,6 +17,7 @@ quit_c: .asciiz "You entered quit"
 file_name: .asciiz "/Users/phongpham/Documents/Documents - PP's Mac/Ktmt/BTL/calc_log.txt"
 buffer: .space 32
 buffer_out: .space 32
+buffer_f: .space 32
 tenf: .float 10.0
 onef: .float 1.0
 M:    .float 0.0
@@ -91,8 +92,7 @@ store_array:
 dot_found:
     li $t6, 1              # counter
     lb $t5, -1($t0)
-    blt $t5, 48, error
-    bgt $t5, 57, error
+    beq $t5, 77, error     # if the previous character is M then error
     lb $t5, 1($t0)
     blt $t5, 48, error
     bgt $t5, 57, error     # if the next character is not a number then error
@@ -155,9 +155,6 @@ error:
     li $v0, 4
     la $a0, error_p
     syscall
-    li $v0, 16 # system call for close file
-    move $a0 , $s6 # f i l e descriptor to close
-    syscall # close file
     li $v0, 10             # syscall 10: exit
     syscall
     
@@ -310,9 +307,6 @@ unbalanced:
     li $v0, 4
     la $a0, unbalanced_p
     syscall
-    li $v0, 16 # system call for close file
-    move $a0 , $s6 # f i l e descriptor to close
-    syscall # close file
     li $v0, 10             # syscall 10: exit
     syscall
 calculate:
@@ -425,26 +419,90 @@ end_main:
     li $v0, 4
     la $a0, result_p
     syscall
-    
     la $t1, array_cal
     l.s $f1, 0($t1)
     li $v0, 2
     mov.s $f12, $f1
     syscall
-    
     s.s $f1, M
     li $v0, 4
     la $a0, down
     syscall
-    
     lw $t9, length
     addi $t9, $t9, 1
     li $v0, 15 # system call for write to file     
     move $a0, $s6 # file descriptor
     la $a1 , input_string # address of buffer from which to write 
     move $a2 , $t9 # hardcoded buffer length
-    syscall # write to file	
+    syscall # write to file
+    l.s $f10, tenf
+    li $t0, 0	
+    cvt.w.s $f3, $f1
+    addi $t3, $zero, 10
+    mfc1 $t1, $f3
+    cvt.s.w $f5, $f3
+    sub.s $f5, $f1, $f5
+    li $t6, 46
+    sb $t6, buffer($t4)
+    addi $t4, $t4, 1
+divide_int_loop:
+    div $t1, $t3        # Divide integer by 10
+    mfhi $t5            # Remainder stored in $t3
+    addi $t5, $t5, 48   # Convert remainder to ASCII
+    sb $t5, buffer($t4) # Store ASCII character in buffer
+    addi $t4, $t4, 1    # Increment buffer index
 
+    mflo $t1            # Quotient stored in $t0
+    bnez $t1, divide_int_loop
+    li $t6, 0
+    subi $t4, $t4, 1
+    j swap_loop
+swap_loop:
+    lb $t5, buffer($t4)
+    sb $t5, buffer_out($t6)
+    addi $t6, $t6, 1
+    beqz $t4, end_swap
+    beq $t6, $t0, add_dot
+    subi $t4, $t4, 1
+    addi $t7, $t7, 1
+    j swap_loop
+add_dot:
+    li $t5, 46
+    sb $t5, buffer_out($t6)
+    addi $t6, $t6, 1
+    subi $t4, $t4, 1
+    j swap_loop
+end_swap:
+    li $v0, 15 # system call for write to file     
+    move $a0, $s6 # file descriptor
+    la $a1 , buffer_out # address of buffer from which to write 
+    move $a2 , $t6 # hardcoded buffer length
+    syscall # write to file
+    li $t6, 0
+    l.s $f10, tenf
+begin_float:
+    beq $t6, 16, end_float
+    mul.s $f5, $f5, $f10
+    cvt.w.s $f3, $f5
+    mfc1 $t1, $f3
+    
+    addi $t1, $t1, 48
+    sb $t1, buffer_f($t6)
+    cvt.s.w $f7, $f3
+    sub.s $f5, $f5, $f7
+    addi $t6, $t6, 1
+    j begin_float
+end_float:
+    li $v0, 15 # system call for write to file     
+    move $a0, $s6 # file descriptor
+    la $a1 , buffer_f # address of buffer from which to write 
+    li $a2 , 16 # hardcoded buffer length
+    syscall # write to file
+    li $v0, 15 # system call for write to file     
+    move $a0, $s6 # file descriptor
+    la $a1 , down # address of buffer from which to write 
+    li $a2 , 1 # hardcoded buffer length
+    syscall # write to file
     j main
 check_quit:
     ###
@@ -453,8 +511,8 @@ check_quit:
     lb $t2, 0($t0)   
     lb $t3, 0($t1)   
 
-    beqz $t2, not_quit  
-    bne $t2, $t3, not_quit  
+    beqz $t2, not_quit  # Kết thúc vòng lặp nếu gặp ký tự kết thúc chuỗi ('\0')
+    bne $t2, $t3, not_quit  # Nếu ký tự không khớp, thoát khỏi vòng lặp
     addi $t0, $t0, 1
     addi $t1, $t1, 1
     j quit
