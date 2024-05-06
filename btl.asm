@@ -445,6 +445,15 @@ end_main:
     li $t6, 46
     sb $t6, buffer($t4)
     addi $t4, $t4, 1
+    li $t6, 0
+    bltz $t1, less_than_z
+    j divide_int_loop
+less_than_z:
+    neg $t1, $t1
+    neg.s $f5, $f5
+    li $t5, 45
+    sb $t5, buffer_out($t6) # Store ASCII character in buffer_out
+    addi $t6, $t6, 1
 divide_int_loop:
     div $t1, $t3        # Divide integer by 10
     mfhi $t5            # Remainder stored in $t3
@@ -454,7 +463,6 @@ divide_int_loop:
 
     mflo $t1            # Quotient stored in $t0
     bnez $t1, divide_int_loop
-    li $t6, 0
     subi $t4, $t4, 1
     j swap_loop
 swap_loop:
@@ -462,15 +470,8 @@ swap_loop:
     sb $t5, buffer_out($t6)
     addi $t6, $t6, 1
     beqz $t4, end_swap
-    beq $t6, $t0, add_dot
     subi $t4, $t4, 1
     addi $t7, $t7, 1
-    j swap_loop
-add_dot:
-    li $t5, 46
-    sb $t5, buffer_out($t6)
-    addi $t6, $t6, 1
-    subi $t4, $t4, 1
     j swap_loop
 end_swap:
     li $v0, 15 # system call for write to file     
@@ -485,8 +486,8 @@ begin_float:
     mul.s $f5, $f5, $f10
     cvt.w.s $f3, $f5
     mfc1 $t1, $f3
-    
     addi $t1, $t1, 48
+    
     sb $t1, buffer_f($t6)
     cvt.s.w $f7, $f3
     sub.s $f5, $f5, $f7
