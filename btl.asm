@@ -23,6 +23,7 @@ onef: .float 1.0
 M:    .float 0.0
 index: .word 0
 length: .word 0
+neg_one: .float -1.0
 .text
 begin:
     li $v0, 13 # system call for open file
@@ -226,9 +227,30 @@ store_add:
     bgt $t6, $t5, push_to_temp
     j pre_push_temp_to_post
 store_sub:
+    la $a2, array_op
+    beq $a2, $t1, unary
+    lb $a1, -1($t1)
+    beq $a1, 40, unary
+    beq $a1, 42, unary	
+    beq $a1, 43, unary
+    beq $a1, 45, unary
+    beq $a1, 47, unary###
+    # beq $a1, 94, store_pow
     li $t6, 1
     bgt $t6, $t5, push_to_temp
     j pre_push_temp_to_post
+unary:
+    li $s1, -1
+    sb $s1, 0($t3)
+    li $s2, 42
+    sb $s2, 0($t4)
+    li $t5, 2
+    addi $t1, $t1, 1
+    addi $t3, $t3, 1
+    subi $t0, $t0, 1
+    addi $t4, $t4, 1
+    addi $t7, $t7, 1
+    j shunting_yard
 store_div:
     li $t6, 2
     bgt $t6, $t5, push_to_temp
@@ -318,6 +340,7 @@ read_postfix:
     lb $t4, 0($t0)
     ###
     beq $t0, $t3, end_main
+    beq $t4, -1, cal_neg
     blt $t4, 33, cal_idx
     beq $t4, 42, cal_mul	
     beq $t4, 43, cal_add
@@ -326,6 +349,12 @@ read_postfix:
     beq $t4, 33, cal_fac ##
     beq $t4, 77, cal_ans ##
     beq $t4, 94, cal_pow ##
+cal_neg:
+    l.s $f1, neg_one
+    s.s $f1, 0($t2)
+    addi $t2, $t2, 4
+    addi $t0, $t0, 1
+    j read_postfix
 cal_idx:
     mul $t4, $t4, 4
     l.s $f1, array($t4)
@@ -372,6 +401,8 @@ cal_fac:
     cvt.s.w $f4, $f3
     c.eq.s $f1, $f4
     bc1f error
+    c.lt.s $f1, $f30
+    bc1t error
     l.s $f3, onef
     l.s $f4, onef
     l.s $f5, onef
