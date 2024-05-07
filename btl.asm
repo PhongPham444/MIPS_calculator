@@ -1,19 +1,27 @@
 .data
 down: .asciiz "\n"
-input_string:   .space  50      # Array to store input string
-array:          .space  200     # Array to store the converted value from input string to float
-array_op:       .space  100     # Array to store operator ()+-*/^! and store index of the float array
-array_temp:     .space  100     # A temp array to store operator for Shunting-yard algorithm
-array_post:     .space  100     # An array to store expression in the postfix form
-array_cal:      .space  100     # A calculated array from postfix array
+		.align 2
+input_string:   .space  256      # Array to store input string
+		.align 2
+array:          .space  256     # Array to store the converted value from input string to float
+		.align 2
+array_op:       .space  256     # Array to store operator ()+-*/^! and store index of the float array
+		.align 2
+array_temp:     .space  256     # A temp array to store operator for Shunting-yard algorithm
+		.align 2
+array_post:     .space  256     # An array to store expression in the postfix form
+		.align 2
+array_cal:      .space  256     # A calculated array from postfix array
 b_float:        .word   0       # Count the number behind floating point
 temp_float:     .float  0.0     # Temp float to convert from string
 input_p: .asciiz "Please insert your expression or enter quit to end program: "
-error_p: .asciiz "You inserted an invalid character in your expression"
+error_p: .asciiz "You inserted an invalid character in your expression\n"
 result_p: .asciiz "Result: "
-unbalanced_p: .asciiz "You inserted unbalanced parentheses in your expression"
+unbalanced_p: .asciiz "You inserted unbalanced parentheses in your expression\n"
 quit_p: .asciiz "quit"
-quit_c: .asciiz "You entered quit"
+quit_c: .asciiz "You entered quit\n"
+quit_program: .asciiz "Quiting program"
+again_p: .asciiz "Please insert your expression again"
 file_name: .asciiz "/Users/phongpham/Documents/Documents - PP's Mac/Ktmt/BTL/calc_log.txt"
 buffer: .space 32
 buffer_out: .space 32
@@ -36,14 +44,12 @@ begin:
     
 main:
     # Input prompt
-    li $v0, 4
+    li $v0, 54
     la $a0, input_p
+    la $a1, input_string  
+    li $a2, 64            
     syscall
-    # Read user input
-    li $v0, 8             
-    la $a0, input_string  
-    li $a1, 50            
-    syscall
+    beq $a1, -2, end_program
     li $v0, 15     
     move $a0, $s6 
     la $a1 , input_p 
@@ -160,8 +166,9 @@ not_digit:
     beq $t1, 94, ins_op
     				# If current character is not in the valid list, jump to error
 error:    
-    li $v0, 4
+    li $v0, 59
     la $a0, error_p
+    la $a1, again_p
     syscall
     
     li $v0, 15     
@@ -173,11 +180,16 @@ error:
     li $v0, 15     
     move $a0, $s6 
     la $a1 , error_p 
-    li $a2 , 52
+    li $a2 , 53
     syscall 
-     
-    li $v0, 10             	# print error prompt and end program
-    syscall
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , down
+    li $a2 , 1
+    syscall 
+    
+    j main
     
 ins_op:    
     sb $t1, 0($t8)         	# insert valid operator to array
@@ -358,24 +370,33 @@ move_loop:
     bnez  $t7, move_loop
     j calculate			# if the stack is null, go to calculate the postfix
     
-unbalanced:
-    li $v0, 4
+unbalanced:			# handle unblanced brackets and jump back to main
+    li $v0, 59
     la $a0, unbalanced_p
+    la $a1, again_p
     syscall
+    
+    lw $t9, length
+    addi $t9, $t9, 1
+    li $v0, 15    
+    move $a0, $s6 
+    la $a1 , input_string
+    move $a2 , $t9 
+    syscall 
+    
+    li $v0, 15     
+    move $a0, $s6 
+    la $a1 , unbalanced_p 
+    li $a2 , 55
+    syscall 
     
     li $v0, 15     
     move $a0, $s6 
     la $a1 , down
     li $a2 , 1
-    syscall
-    
-    li $v0, 15     
-    move $a0, $s6 
-    la $a1 , unbalanced_p 
-    li $a2 , 54
     syscall 
-    li $v0, 10            
-    syscall
+    
+    j main
     
 calculate:
     la $t0, array_post
@@ -496,20 +517,15 @@ end_pow:
     j read_postfix
                     
 end_main:
-    li $v0, 4
+    li $v0, 57
     la $a0, result_p
-    syscall
     
     la $t1, array_cal
     l.s $f1, 0($t1)
-    li $v0, 2
     mov.s $f12, $f1
     syscall
     
     s.s $f1, M
-    li $v0, 4
-    la $a0, down
-    syscall
     
     lw $t9, length
     addi $t9, $t9, 1
@@ -619,8 +635,9 @@ check_quit_loop:
     addi $t1, $t1, 1
     j check_quit_loop
 quit:
-    li $v0, 4
+    li $v0, 59
     la $a0, quit_c
+    la $a1, quit_program
     syscall
     
     li $v0, 15     
